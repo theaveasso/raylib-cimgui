@@ -172,6 +172,7 @@ static const KeyboardKey RaylibKeys[] = {
     KEY_KP_ADD,
     KEY_KP_ENTER,
     KEY_KP_EQUAL};
+
 static int RaylibKeyCount = sizeof(RaylibKeys) / sizeof(RaylibKeys[0]);
 
 static ImGuiKey RaylibKeyToImGui(KeyboardKey key) {
@@ -395,34 +396,26 @@ static ImGuiKey RaylibKeyToImGui(KeyboardKey key) {
 static MouseCursor ImGuiCursorToRaylib(ImGuiMouseCursor cursor) {
     switch (cursor)
     {
-        case ImGuiMouseCursor_Arrow:
-            return MOUSE_CURSOR_ARROW;
-        case ImGuiMouseCursor_TextInput:
-            return MOUSE_CURSOR_IBEAM;
-        case ImGuiMouseCursor_Hand:
-            return MOUSE_CURSOR_POINTING_HAND;
-        case ImGuiMouseCursor_ResizeAll:
-            return MOUSE_CURSOR_RESIZE_ALL;
-        case ImGuiMouseCursor_ResizeEW:
-            return MOUSE_CURSOR_RESIZE_EW;
-        case ImGuiMouseCursor_ResizeNESW:
-            return MOUSE_CURSOR_RESIZE_NESW;
-        case ImGuiMouseCursor_ResizeNS:
-            return MOUSE_CURSOR_RESIZE_NS;
-        case ImGuiMouseCursor_ResizeNWSE:
-            return MOUSE_CURSOR_RESIZE_NWSE;
-        case ImGuiMouseCursor_NotAllowed:
-            return MOUSE_CURSOR_NOT_ALLOWED;
-        default:
-            return MOUSE_CURSOR_DEFAULT;
+        case ImGuiMouseCursor_Arrow: return MOUSE_CURSOR_ARROW;
+        case ImGuiMouseCursor_TextInput: return MOUSE_CURSOR_IBEAM;
+        case ImGuiMouseCursor_Hand: return MOUSE_CURSOR_POINTING_HAND;
+        case ImGuiMouseCursor_ResizeAll: return MOUSE_CURSOR_RESIZE_ALL;
+        case ImGuiMouseCursor_ResizeEW: return MOUSE_CURSOR_RESIZE_EW;
+        case ImGuiMouseCursor_ResizeNESW: return MOUSE_CURSOR_RESIZE_NESW;
+        case ImGuiMouseCursor_ResizeNS: return MOUSE_CURSOR_RESIZE_NS;
+        case ImGuiMouseCursor_ResizeNWSE: return MOUSE_CURSOR_RESIZE_NWSE;
+        case ImGuiMouseCursor_NotAllowed: return MOUSE_CURSOR_NOT_ALLOWED;
+        default: return MOUSE_CURSOR_DEFAULT;
     };
 }
 
-static const char *GetClipTextCallback(ImGuiContext *) {
+static const char *GetClipTextCallback(ImGuiContext *ctx) {
+    (void) ctx;
     return GetClipboardText();
 }
 
-static void SetClipTextCallback(ImGuiContext *, const char *text) {
+static void SetClipTextCallback(ImGuiContext *ctx, const char *text) {
+    (void) ctx;
     SetClipboardText(text);
 }
 
@@ -439,10 +432,8 @@ void HandleGamepadStickEvent(ImGuiIO *io, GamepadAxis axis, ImGuiKey negKey,
 
     float axisValue = GetGamepadAxisMovement(0, axis);
 
-    ImGuiIO_AddKeyAnalogEvent(io, negKey, axisValue < -deadZone,
-                              axisValue < -deadZone ? -axisValue : 0);
-    ImGuiIO_AddKeyAnalogEvent(io, posKey, axisValue > deadZone,
-                              axisValue > deadZone ? axisValue : 0);
+    ImGuiIO_AddKeyAnalogEvent(io, negKey, axisValue < -deadZone, axisValue < -deadZone ? -axisValue : 0);
+    ImGuiIO_AddKeyAnalogEvent(io, posKey, axisValue > deadZone, axisValue > deadZone ? axisValue : 0);
 }
 
 static void ImGuiNewFrame(float deltaTime) {
