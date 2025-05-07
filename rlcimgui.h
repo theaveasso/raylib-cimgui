@@ -54,8 +54,6 @@ void rligEnd(void);
  */
 void rligShutdown(void);
 
-// Advanced StartupAPI
-
 /**
  * Custom initialization. Not needed if you call rlImGuiSetup. Only needed if you want to add custom setup code.
  * must be followed by rlImGuiEndInitImGui
@@ -75,14 +73,41 @@ void rligEndInitImGui(void);
  */
 void rligReloadFonts(void);
 
-// Advanced Update API
-
 /**
  * Starts a new ImGui Frame with a specified delta time
  *
  * @param dt delta time, any value < 0 will use raylib GetFrameTime
  */
 void rligBeginDelta(float deltaTime);
+
+/**
+ * Draw a texture as an image in an ImGui Context
+ * Uses the current ImGui Cursor position and the full texture size
+ *
+ * @param image The raylib texture to draw
+ */
+void rligImage(const Texture *image);
+
+/**
+ * Draw a texture as an image in an ImGui Context at a specific size
+ * Uses the current ImGui Cursor position and the specified width and height
+ * The image will be scaled up or down to fit as needed
+ *
+ * @param image The raylib texture to draw
+ * @param width The width of the drawn image
+ * @param height The height of the drawn image
+ */
+void rligImageSize(const Texture *image, int width, int height);
+
+/**
+ * Draw a texture as an image in an ImGui Context at a specific size
+ * Uses the current ImGui Cursor position and the specified size
+ * The image will be scaled up or down to fit as needed
+ *
+ * @param image The raylib texture to draw
+ * @param size The size of drawn image
+ */
+void rligImageSizeV(const Texture *image, Vector2 size);
 
 /**
  * Draw a portion texture as an image in an ImGui Context at a defined size
@@ -94,14 +119,14 @@ void rligBeginDelta(float deltaTime);
  * @param destHeight The height of the drawn image
  * @param sourceRect The portion of the texture to draw as an image. Negative values for the width and height will flip the image
  */
-void rligImageRect(const Texture* image, int destWidth, int destHeight, Rectangle sourceRect);
+void rligImageRect(const Texture *image, int destWidth, int destHeight, Rectangle sourceRect);
 
 /**
  * Draws a render texture as an image an ImGui Context, automatically flipping the Y axis so it will show correctly on screen
  *
  * @param image The render texture to draw
  */
-void rligImageRenderTexture(const RenderTexture* image);
+void rligImageRenderTexture(const RenderTexture *image);
 
 /**
  * Draws a render texture as an image an ImGui Context, automatically flipping the Y axis so it will show correctly on screen
@@ -110,7 +135,7 @@ void rligImageRenderTexture(const RenderTexture* image);
  * @param image The render texture to draw
  * @param center When true the image will be centered in the content area
  */
-void rligImageRenderTextureFit(const RenderTexture* image, bool center);
+void rligImageRenderTextureFit(const RenderTexture *image, bool center);
 
 /**
  * Draws a texture as an image button in an ImGui context. Uses the current ImGui cursor position and the full size of the texture
@@ -119,7 +144,17 @@ void rligImageRenderTextureFit(const RenderTexture* image, bool center);
  * @param image The texture to draw
  * @return True if the button was clicked
  */
-bool rligImageButton(const char* name, const Texture* image);
+bool rligImageButton(const char *name, const Texture *image);
+
+/**
+ *  Draws a texture as an image button in an ImGui context. Uses the current ImGui cursor position and the specified size.
+ *
+ *  @param name The display name and ImGui ID for the button
+ *  @param image The texture to draw
+ *  @param size The size of the button
+ *  @return True if the button was clicked
+ */
+bool rligImageButtonSize(const char *name, const Texture *image, Vector2 size);
 
 #ifdef __cplusplus
 }
