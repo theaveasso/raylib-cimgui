@@ -67,3 +67,6 @@ compile_commands.json
 [Bb]uild
 
 examples/imgui.ini
+
+cmake-build-debug*
+.idea
