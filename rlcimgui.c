@@ -42,7 +42,12 @@ void ImGui_ImplRaylib_CreateBackendData() {
     igGetPlatformIO_ContextPtr(GlobalContext)->Renderer_RenderState = MemAlloc(sizeof(ImGui_ImplRaylib_Data));
 }
 
-void ReloadFonts(void) {
+void ImGui_ImplRaylib_FreeBackendData() {
+    if (!igGetCurrentContext()) return;
+    MemFree(igGetPlatformIO_ContextPtr(GlobalContext)->Renderer_RenderState);
+}
+
+void imgui_build_font_atlas(void) {
     ImGui_ImplRaylib_Data *platformData = ImGui_ImplRaylib_GetBackendData();
     if (!platformData) return;
 
@@ -279,7 +284,7 @@ static ImGuiKey RaylibKeyToImGui(KeyboardKey key) {
         case KEY_KP_ENTER: return ImGuiKey_KeypadEnter;
         case KEY_KP_EQUAL: return ImGuiKey_KeypadEqual;
         default: return ImGuiKey_None;
-    };
+    }
 }
 
 static MouseCursor ImGuiCursorToRaylib(ImGuiMouseCursor cursor) {
@@ -295,28 +300,25 @@ static MouseCursor ImGuiCursorToRaylib(ImGuiMouseCursor cursor) {
         case ImGuiMouseCursor_ResizeNWSE: return MOUSE_CURSOR_RESIZE_NWSE;
         case ImGuiMouseCursor_NotAllowed: return MOUSE_CURSOR_NOT_ALLOWED;
         default: return MOUSE_CURSOR_DEFAULT;
-    };
+    }
 }
 
-static const char *GetClipTextCallback(ImGuiContext *ctx) {
+static const char *get_clip_text_callback(ImGuiContext *ctx) {
     (void) ctx;
     return GetClipboardText();
 }
 
-static void SetClipTextCallback(ImGuiContext *ctx, const char *text) {
+static void set_clip_text_callback(ImGuiContext *ctx, const char *text) {
     (void) ctx;
     SetClipboardText(text);
 }
 
-void HandleGamepadButtonEvent(ImGuiIO *io, GamepadButton button, ImGuiKey key) {
-    if (IsGamepadButtonPressed(0, button))
-        ImGuiIO_AddKeyEvent(io, key, true);
-    else if (IsGamepadButtonReleased(0, button))
-        ImGuiIO_AddKeyEvent(io, key, false);
+static void handle_gamepad_button_event(ImGuiIO *io, GamepadButton button, ImGuiKey key) {
+    if (IsGamepadButtonPressed(0, button)) { ImGuiIO_AddKeyEvent(io, key, true); }
+    else if (IsGamepadButtonReleased(0, button)) { ImGuiIO_AddKeyEvent(io, key, false); }
 }
 
-void HandleGamepadStickEvent(ImGuiIO *io, GamepadAxis axis, ImGuiKey negKey,
-                             ImGuiKey posKey) {
+static void handle_gamepad_stick_event(ImGuiIO *io, GamepadAxis axis, ImGuiKey negKey, ImGuiKey posKey) {
     static float deadZone = 0.20f;
 
     float axisValue = GetGamepadAxisMovement(0, axis);
@@ -325,7 +327,7 @@ void HandleGamepadStickEvent(ImGuiIO *io, GamepadAxis axis, ImGuiKey negKey,
     ImGuiIO_AddKeyAnalogEvent(io, posKey, axisValue > deadZone, axisValue > deadZone ? axisValue : 0);
 }
 
-static void ImGuiNewFrame(float deltaTime) {
+static void imgui_new_frame(float deltaTime) {
     ImGuiIO *io                         = igGetIO_ContextPtr(GlobalContext);
     ImGui_ImplRaylib_Data *platformData = ImGui_ImplRaylib_GetBackendData();
     if (!platformData)
@@ -335,7 +337,7 @@ static void ImGuiNewFrame(float deltaTime) {
         if (!platformData) return;
     }
 
-    if (!IsTextureValid(platformData->FontTexture)) ReloadFonts();
+    if (!IsTextureValid(platformData->FontTexture)) ImGui_ImplRaylib_BuildFontAtlas();
 
     if (IsWindowFullscreen())
     {
@@ -402,7 +404,7 @@ static void ImGuiNewFrame(float deltaTime) {
     }
 }
 
-static void ImGuiTriangleVert(ImDrawVert *idx_vert) {
+static void ig_triangle_vertex(ImDrawVert *idx_vert) {
     Color *c;
     c = (Color *) &idx_vert->col;
     rlColor4ub(c->r, c->g, c->b, c->a);
@@ -410,12 +412,10 @@ static void ImGuiTriangleVert(ImDrawVert *idx_vert) {
     rlVertex2f(idx_vert->pos.x, idx_vert->pos.y);
 }
 
-static void ImGuiRenderTriangles(unsigned int count, int indexStart, const ImVector_ImDrawIdx *indexBuffer, const ImVector_ImDrawVert *vertBuffer, ImTextureID texturePtr) {
-    if (count < 3) return;
+static void ig_render_triangles(unsigned int count, int indexStart, const ImVector_ImDrawIdx *indexBuffer, const ImVector_ImDrawVert *vertBuffer, ImTextureID texturePtr) {
+    if (count < 3) { return; }
 
-    Texture *texture = (Texture *) texturePtr;
-
-    unsigned int textureId = (texture == NULL) ? 0 : texture->id;
+    unsigned int textureId = (unsigned int) (texturePtr);
 
     rlBegin(RL_TRIANGLES);
     rlSetTexture(textureId);
@@ -430,18 +430,19 @@ static void ImGuiRenderTriangles(unsigned int count, int indexStart, const ImVec
         ImDrawVert vertexB = vertBuffer->Data[indexB];
         ImDrawVert vertexC = vertBuffer->Data[indexC];
 
-        ImGuiTriangleVert(&vertexA);
-        ImGuiTriangleVert(&vertexB);
-        ImGuiTriangleVert(&vertexC);
+        ig_triangle_vertex(&vertexA);
+        ig_triangle_vertex(&vertexB);
+        ig_triangle_vertex(&vertexC);
     }
     rlEnd();
 }
 
-static void EnableScissor(float x, float y, float width, float height) {
+static void enable_scissor(float x, float y, float width, float height) {
     rlEnableScissorTest();
     ImGuiIO *io = igGetIO_ContextPtr(GlobalContext);
 
     ImVec2 scale = io->DisplayFramebufferScale;
+
 #if !defined(__APPLE__)
     if (!IsWindowState(FLAG_WINDOW_HIGHDPI))
     {
@@ -450,12 +451,14 @@ static void EnableScissor(float x, float y, float width, float height) {
     }
 #endif
 
-    rlScissor((int) (x * scale.x),
-              (int) ((io->DisplaySize.y - (int) (y + height)) * scale.y),
-              (int) (width * scale.x), (int) (height * scale.y));
+    int scissorScaleX      = (int) x * scale.x;
+    int scissorScaleY      = (int) (io->DisplaySize.y - (y + height)) * scale.y;
+    int scissorScaleWidth  = (int) width * scale.x;
+    int scissorScaleHeight = (int) height * scale.y;
+    rlScissor(scissorScaleX, scissorScaleY, scissorScaleWidth, scissorScaleHeight);
 }
 
-static void SetupGlobals(void) {
+static void setup_globals(void) {
     LastFrameFocused   = IsWindowFocused();
     LastControlPressed = false;
     LastShiftPressed   = false;
@@ -470,20 +473,27 @@ void rligSetupFontAwesome(void) {
     icons_config.MergeMode              = true;
     icons_config.PixelSnapH             = true;
     icons_config.FontDataOwnedByAtlas   = false;
-    icons_config.SizePixels             = FONT_AWESOME_ICON_SIZE;
-    icons_config.OversampleH            = 1;
-    icons_config.OversampleV            = 1;
-    icons_config.GlyphMinAdvanceX       = 1.0f;
-    icons_config.GlyphMaxAdvanceX       = FLT_MAX;
-    icons_config.RasterizerMultiply     = 1.0f;
-    icons_config.RasterizerDensity      = 1.0f;
+
+    icons_config.SizePixels         = FONT_AWESOME_ICON_SIZE;
+    icons_config.OversampleH        = 1;
+    icons_config.OversampleV        = 1;
+    icons_config.GlyphMinAdvanceX   = 1.0f;
+    icons_config.GlyphMaxAdvanceX   = FLT_MAX;
+    icons_config.RasterizerMultiply = 1.0f;
+    icons_config.RasterizerDensity  = 1.0f;
+
+    float size = FONT_AWESOME_ICON_SIZE;
+#if !defined(__APPLE__)
+    if (!IsWindowState(FLAG_WINDOW_HIGHDPI)) size *= GetWindowScaleDPI().y;
+    icons_config.RasterizerMultiply = GetWindowScaleDPI().y;
+#endif
 
     ImGuiIO *io = igGetIO_ContextPtr(GlobalContext);
-    ImFontAtlas_AddFontFromMemoryCompressedTTF(io->Fonts, (void *) fa_solid_900_compressed_data, fa_solid_900_compressed_size, FONT_AWESOME_ICON_SIZE, &icons_config, icons_ranges);
+    ImFontAtlas_AddFontFromMemoryCompressedTTF(io->Fonts, (void *) fa_solid_900_compressed_data, fa_solid_900_compressed_size, size, &icons_config, icons_ranges);
 #endif
 }
 
-void SetupBackend(void) {
+void setup_backend(void) {
     ImGuiIO *io             = igGetIO_ContextPtr(GlobalContext);
     io->BackendPlatformName = "cimgui_impl_raylib";
 
@@ -494,8 +504,8 @@ void SetupBackend(void) {
     io->MousePos = (ImVec2){0, 0};
 
     ImGuiPlatformIO *platformIO             = igGetPlatformIO_ContextPtr(GlobalContext);
-    platformIO->Platform_SetClipboardTextFn = SetClipTextCallback;
-    platformIO->Platform_GetClipboardTextFn = GetClipTextCallback;
+    platformIO->Platform_SetClipboardTextFn = set_clip_text_callback;
+    platformIO->Platform_GetClipboardTextFn = get_clip_text_callback;
 
     platformIO->Platform_ClipboardUserData = NULL;
 
@@ -504,20 +514,13 @@ void SetupBackend(void) {
 
 void rligEndInitImGui(void) {
     igSetCurrentContext(GlobalContext);
-
     rligSetupFontAwesome();
-
-    SetupBackend();
-
-    ReloadFonts();
+    setup_backend();
 }
 
 void rligBeginInitImGui(void) {
-    SetupGlobals();
-    if (GlobalContext == NULL)
-    {
-        GlobalContext = igCreateContext(NULL);
-    }
+    setup_globals();
+    if (GlobalContext == NULL) GlobalContext = igCreateContext(NULL);
 
     ImGuiIO *io = igGetIO_ContextPtr(GlobalContext);
     ImFontAtlas_AddFontDefault(io->Fonts, NULL);
@@ -525,31 +528,20 @@ void rligBeginInitImGui(void) {
 
 void rligSetup(bool dark) {
     rligBeginInitImGui();
-
-    if (dark)
-        igStyleColorsDark(NULL);
-    else
-        igStyleColorsDark(NULL);
-
+    dark ? igStyleColorsDark(NULL) : igStyleColorsClassic(NULL);
     rligEndInitImGui();
-}
-
-void rligBeginDelta(float deltaTime) {
-    igSetCurrentContext(GlobalContext);
-    ImGuiNewFrame(deltaTime);
-    ImGui_ImplRaylib_ProcessEvents();
-    igNewFrame();
-}
-
-void rligReloadFonts(void) {
-    igSetCurrentContext(GlobalContext);
-
-    ReloadFonts();
 }
 
 void rligBegin(void) {
     igSetCurrentContext(GlobalContext);
     rligBeginDelta(GetFrameTime());
+}
+
+void rligBeginDelta(float deltaTime) {
+    igSetCurrentContext(GlobalContext);
+    imgui_new_frame(deltaTime);
+    ImGui_ImplRaylib_ProcessEvents();
+    igNewFrame();
 }
 
 void rligEnd(void) {
@@ -572,16 +564,9 @@ void rligShutdown(void) {
 }
 
 bool ImGui_ImplRaylib_Init(void) {
-    SetupGlobals();
-    SetupBackend();
+    setup_globals();
+    setup_backend();
     return true;
-}
-
-void ImGui_ImplRaylib_BuildFontAtlas(void) { ReloadFonts(); }
-
-void ImGui_ImplRaylib_FreeBackendData() {
-    if (!igGetCurrentContext()) return;
-    MemFree(igGetPlatformIO_ContextPtr(GlobalContext)->Renderer_RenderState);
 }
 
 void ImGui_ImplRaylib_Shutdown() {
@@ -592,7 +577,9 @@ void ImGui_ImplRaylib_Shutdown() {
     io->Fonts->TexID = 0;
 }
 
-void ImGui_ImplRaylib_NewFrame(void) { ImGuiNewFrame(GetFrameTime()); }
+void ImGui_ImplRaylib_BuildFontAtlas(void) { imgui_build_font_atlas(); }
+
+void ImGui_ImplRaylib_NewFrame(void) { imgui_new_frame(GetFrameTime()); }
 
 void ImGui_ImplRaylib_RenderDrawData(ImDrawData *draw_data) {
     rlDrawRenderBatchActive();
@@ -606,17 +593,20 @@ void ImGui_ImplRaylib_RenderDrawData(ImDrawData *draw_data) {
         {
             const ImDrawCmd cmd = commandList->CmdBuffer.Data[ci];
 
-            EnableScissor(cmd.ClipRect.x - draw_data->DisplayPos.x,
-                          cmd.ClipRect.y - draw_data->DisplayPos.y,
-                          cmd.ClipRect.z - (cmd.ClipRect.x - draw_data->DisplayPos.x),
-                          cmd.ClipRect.w - (cmd.ClipRect.y - draw_data->DisplayPos.y));
+            float x      = cmd.ClipRect.x - draw_data->DisplayPos.x;
+            float y      = cmd.ClipRect.y - draw_data->DisplayPos.y;
+            float width  = cmd.ClipRect.z - (cmd.ClipRect.x - draw_data->DisplayPos.x);
+            float height = cmd.ClipRect.w - (cmd.ClipRect.y - draw_data->DisplayPos.y);
+
+            enable_scissor(x, y, width, height);
+
             if (cmd.UserCallback != NULL)
             {
                 cmd.UserCallback(commandList, &cmd);
                 continue;
             }
 
-            ImGuiRenderTriangles(cmd.ElemCount, (int) cmd.IdxOffset, &commandList->IdxBuffer, &commandList->VtxBuffer, cmd.TextureId);
+            ig_render_triangles(cmd.ElemCount, (int) cmd.IdxOffset, &commandList->IdxBuffer, &commandList->VtxBuffer, cmd.TextureId);
             rlDrawRenderBatchActive();
         }
     }
@@ -659,45 +649,47 @@ bool ImGui_ImplRaylib_ProcessEvents(void) {
         keyId = GetKeyPressed();
     }
 
-    // look for any keys that were down last frame and see if they were down and
-    // are released
     for (int ki = 0; ki < RaylibKeyCount; ++ki)
     {
         if (IsKeyReleased(RaylibKeys[ki])) ImGuiIO_AddKeyEvent(io, RaylibKeyToImGui(RaylibKeys[ki]), false);
+        else if (IsKeyPressed(RaylibKeys[ki]))
+            ImGuiIO_AddKeyEvent(io, RaylibKeyToImGui(RaylibKeys[ki]), true);
     }
 
-    // add the text input in order
-    unsigned int pressed = GetCharPressed();
-    while (pressed != 0)
+    if (io->WantCaptureKeyboard)
     {
-        ImGuiIO_AddInputCharacter(io, pressed);
-        pressed = GetCharPressed();
+        unsigned int pressed = GetCharPressed();
+        while (pressed != 0)
+        {
+            ImGuiIO_AddInputCharacter(io, pressed);
+            pressed = GetCharPressed();
+        }
     }
 
     if (io->ConfigFlags & ImGuiConfigFlags_NavEnableGamepad && IsGamepadAvailable(0))
     {
-        HandleGamepadButtonEvent(io, GAMEPAD_BUTTON_LEFT_FACE_UP, ImGuiKey_GamepadDpadUp);
-        HandleGamepadButtonEvent(io, GAMEPAD_BUTTON_LEFT_FACE_RIGHT, ImGuiKey_GamepadDpadRight);
-        HandleGamepadButtonEvent(io, GAMEPAD_BUTTON_LEFT_FACE_DOWN, ImGuiKey_GamepadDpadDown);
-        HandleGamepadButtonEvent(io, GAMEPAD_BUTTON_LEFT_FACE_LEFT, ImGuiKey_GamepadDpadLeft);
-        HandleGamepadButtonEvent(io, GAMEPAD_BUTTON_RIGHT_FACE_UP, ImGuiKey_GamepadFaceUp);
-        HandleGamepadButtonEvent(io, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT, ImGuiKey_GamepadFaceLeft);
-        HandleGamepadButtonEvent(io, GAMEPAD_BUTTON_RIGHT_FACE_DOWN, ImGuiKey_GamepadFaceDown);
-        HandleGamepadButtonEvent(io, GAMEPAD_BUTTON_RIGHT_FACE_LEFT, ImGuiKey_GamepadFaceRight);
-        HandleGamepadButtonEvent(io, GAMEPAD_BUTTON_LEFT_TRIGGER_1, ImGuiKey_GamepadL1);
-        HandleGamepadButtonEvent(io, GAMEPAD_BUTTON_LEFT_TRIGGER_2, ImGuiKey_GamepadL2);
-        HandleGamepadButtonEvent(io, GAMEPAD_BUTTON_RIGHT_TRIGGER_1, ImGuiKey_GamepadR1);
-        HandleGamepadButtonEvent(io, GAMEPAD_BUTTON_RIGHT_TRIGGER_2, ImGuiKey_GamepadR2);
-        HandleGamepadButtonEvent(io, GAMEPAD_BUTTON_LEFT_THUMB, ImGuiKey_GamepadL3);
-        HandleGamepadButtonEvent(io, GAMEPAD_BUTTON_RIGHT_THUMB, ImGuiKey_GamepadR3);
-        HandleGamepadButtonEvent(io, GAMEPAD_BUTTON_MIDDLE_LEFT, ImGuiKey_GamepadStart);
-        HandleGamepadButtonEvent(io, GAMEPAD_BUTTON_MIDDLE_RIGHT, ImGuiKey_GamepadBack);
+        handle_gamepad_button_event(io, GAMEPAD_BUTTON_LEFT_FACE_UP, ImGuiKey_GamepadDpadUp);
+        handle_gamepad_button_event(io, GAMEPAD_BUTTON_LEFT_FACE_RIGHT, ImGuiKey_GamepadDpadRight);
+        handle_gamepad_button_event(io, GAMEPAD_BUTTON_LEFT_FACE_DOWN, ImGuiKey_GamepadDpadDown);
+        handle_gamepad_button_event(io, GAMEPAD_BUTTON_LEFT_FACE_LEFT, ImGuiKey_GamepadDpadLeft);
+        handle_gamepad_button_event(io, GAMEPAD_BUTTON_RIGHT_FACE_UP, ImGuiKey_GamepadFaceUp);
+        handle_gamepad_button_event(io, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT, ImGuiKey_GamepadFaceLeft);
+        handle_gamepad_button_event(io, GAMEPAD_BUTTON_RIGHT_FACE_DOWN, ImGuiKey_GamepadFaceDown);
+        handle_gamepad_button_event(io, GAMEPAD_BUTTON_RIGHT_FACE_LEFT, ImGuiKey_GamepadFaceRight);
+        handle_gamepad_button_event(io, GAMEPAD_BUTTON_LEFT_TRIGGER_1, ImGuiKey_GamepadL1);
+        handle_gamepad_button_event(io, GAMEPAD_BUTTON_LEFT_TRIGGER_2, ImGuiKey_GamepadL2);
+        handle_gamepad_button_event(io, GAMEPAD_BUTTON_RIGHT_TRIGGER_1, ImGuiKey_GamepadR1);
+        handle_gamepad_button_event(io, GAMEPAD_BUTTON_RIGHT_TRIGGER_2, ImGuiKey_GamepadR2);
+        handle_gamepad_button_event(io, GAMEPAD_BUTTON_LEFT_THUMB, ImGuiKey_GamepadL3);
+        handle_gamepad_button_event(io, GAMEPAD_BUTTON_RIGHT_THUMB, ImGuiKey_GamepadR3);
+        handle_gamepad_button_event(io, GAMEPAD_BUTTON_MIDDLE_LEFT, ImGuiKey_GamepadStart);
+        handle_gamepad_button_event(io, GAMEPAD_BUTTON_MIDDLE_RIGHT, ImGuiKey_GamepadBack);
 
-        HandleGamepadStickEvent(io, GAMEPAD_AXIS_LEFT_X, ImGuiKey_GamepadLStickLeft, ImGuiKey_GamepadLStickRight);
-        HandleGamepadStickEvent(io, GAMEPAD_AXIS_LEFT_Y, ImGuiKey_GamepadLStickUp, ImGuiKey_GamepadLStickDown);
+        handle_gamepad_stick_event(io, GAMEPAD_AXIS_LEFT_X, ImGuiKey_GamepadLStickLeft, ImGuiKey_GamepadLStickRight);
+        handle_gamepad_stick_event(io, GAMEPAD_AXIS_LEFT_Y, ImGuiKey_GamepadLStickUp, ImGuiKey_GamepadLStickDown);
 
-        HandleGamepadStickEvent(io, GAMEPAD_AXIS_RIGHT_X, ImGuiKey_GamepadRStickLeft, ImGuiKey_GamepadRStickRight);
-        HandleGamepadStickEvent(io, GAMEPAD_AXIS_RIGHT_Y, ImGuiKey_GamepadRStickUp, ImGuiKey_GamepadRStickDown);
+        handle_gamepad_stick_event(io, GAMEPAD_AXIS_RIGHT_X, ImGuiKey_GamepadRStickLeft, ImGuiKey_GamepadRStickRight);
+        handle_gamepad_stick_event(io, GAMEPAD_AXIS_RIGHT_Y, ImGuiKey_GamepadRStickUp, ImGuiKey_GamepadRStickDown);
     }
 
     return true;
